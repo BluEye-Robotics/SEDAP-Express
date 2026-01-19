@@ -33,9 +33,9 @@ uv run python blueye_tcp_client.py -c 63.12345 10.12345
 The Server will then print the command as follows:
 ```
 [TCP] Client connected from ('127.0.0.1', 59084)
-======================================================
-[COMMAND] MOVE received → POI lat=63.123, lon=10.44
-======================================================
+=========================================================
+[COMMAND] MOVE received → POI lat=63.12345, lon=10.12345
+=========================================================
 ```
 
 The server will produce the following messages:
