@@ -1,0 +1,14 @@
+[project]
+name = "sedap-server"
+version = "0.1.0"
+description = "TCP server that connects to the Blueye drone and serves position, heading and depth to SEDAP third-party software"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["blueye.sdk", "numpy"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
