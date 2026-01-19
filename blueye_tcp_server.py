@@ -33,7 +33,7 @@ class PositionState:
 
     def update_depth(self, depth: float):
         with self.lock:
-            self.depth = depth
+            self.depth = -depth
 
     def get(self):
         with self.lock:
