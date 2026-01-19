@@ -1,5 +1,5 @@
-# SEDAP Server - send blueye position to SEDAP
-This is a small TCP server that connects to the Blueye drone with the Blueye SDK and serves the position, heading and depth to third-party software called SEDAP.
+# SEDAP Server - forwarding the blueye position to SEDAP
+This is a small TCP server that connects to the Blueye drone with the Blueye SDK and serves the position, heading, and depth to third-party software called SEDAP.
 
 ## Setup
 
