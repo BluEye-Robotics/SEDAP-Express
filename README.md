@@ -30,6 +30,14 @@ Issue a command with a lat/long coordinate (in decimal degrees):
 uv run python blueye_tcp_client.py -c 63.12345 10.12345
 ```
 
+The Server will then print the command as follows:
+```
+[TCP] Client connected from ('127.0.0.1', 59084)
+======================================================
+[COMMAND] MOVE received → POI lat=63.123, lon=10.44
+======================================================
+```
+
 The server will produce the following messages:
 ```
 OWNUNIT;blueye-rov;63.438731;10.426696;-0.4;0.1;0.0;0.0;;;BLUEYE_ROV; # at 5 Hz
