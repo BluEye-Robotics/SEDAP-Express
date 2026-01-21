@@ -23,7 +23,7 @@ def build_command_move(lat: float, lon: float) -> str:
 # Message handlers
 # =========================
 
-def handle_ownunit(message: str):
+def handle_ownunit(message: str, verbose: bool = False):
     """
     Parse and print OWNUNIT messages.
     Format: OWNUNIT;unit_id;lat;lon;alt;speed;course;heading;roll;pitch;name;sidc
@@ -59,8 +59,9 @@ def handle_ownunit(message: str):
             print(f"  roll={roll:.1f if roll is not None else 'N/A'}°, pitch={pitch:.1f if pitch is not None else 'N/A'}°")
         if name:
             print(f"  name={name}")
-        # print the raw message for reference
-        print(f"  Raw message: {message.strip()}")
+        # print the raw message for reference only if verbose
+        if verbose:
+            print(f"  Raw message: {message.strip()}")
 
     except (IndexError, ValueError) as e:
         print(f"[OWNUNIT] Parse error: {e}")
@@ -77,11 +78,56 @@ def handle_heartbeat(message: str):
         print(f"[HEARTBEAT] from {sender_id}")
 
 
+def handle_generic(message: str, verbose: bool = False):
+    """
+    Parse and print GENERIC messages.
+    Format: GENERIC;<Number>;<Time>;<Sender>;<Classification>;<Acknowledgement>;<MAC>;<ContentType>;<Encoding>;<Content>;<Rtsp stream>;<Azimuth_deg>;<Elevation_deg>;<HorizontalOpeningAngle_deg>;<VerticalOpeningAngle_deg>;<Range_m>;<Zoom>
+    """
+    parts = message.strip().split(";")
+
+    if len(parts) < 11:
+        return
+
+    if parts[0] != "GENERIC":
+        return
+
+    try:
+        number = parts[1]
+        timestamp = parts[2]
+        sender = parts[3]
+        classification = parts[4]
+        acknowledgement = parts[5]
+        mac = parts[6]
+        content_type = parts[7]
+        encoding = parts[8]
+        content = parts[9]
+        rtsp_stream = parts[10]
+        azimuth = float(parts[11]) if len(parts) > 11 and parts[11] else 0.0
+        elevation = float(parts[12]) if len(parts) > 12 and parts[12] else 0.0
+        h_fov = float(parts[13]) if len(parts) > 13 and parts[13] else 0.0
+        v_fov = float(parts[14]) if len(parts) > 14 and parts[14] else 0.0
+        range_m = float(parts[15]) if len(parts) > 15 and parts[15] else 0.0
+        zoom = float(parts[16]) if len(parts) > 16 and parts[16] else 1.0
+
+        print(
+            f"[GENERIC] #{number} from {sender} at {timestamp}\n"
+            f"  Content: {content}\n"
+            f"  RTSP: {rtsp_stream}\n"
+            f"  Camera: azimuth={azimuth:.1f}°, elevation={elevation:.1f}°, "
+            f"FOV={h_fov:.1f}°x{v_fov:.1f}°, range={range_m:.0f}m, zoom={zoom:.1f}"
+        )
+        if verbose:
+            print(f"  Raw message: {message.strip()}")
+
+    except (IndexError, ValueError) as e:
+        print(f"[GENERIC] Parse error: {e}")
+
+
 # =========================
 # Receive thread
 # =========================
 
-def receive_messages(sock: socket.socket):
+def receive_messages(sock: socket.socket, verbose: bool = False):
     """
     Continuously receive and parse messages from the server.
     """
@@ -107,9 +153,11 @@ def receive_messages(sock: socket.socket):
                         continue
 
                     if line.startswith("OWNUNIT"):
-                        handle_ownunit(line)
+                        handle_ownunit(line, verbose)
                     elif line.startswith("HEARTBEAT"):
                         handle_heartbeat(line)
+                    elif line.startswith("GENERIC"):
+                        handle_generic(line, verbose)
 
             except socket.timeout:
                 continue
@@ -125,7 +173,7 @@ def receive_messages(sock: socket.socket):
 # Main client
 # =========================
 
-def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, command_lon=None):
+def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, command_lon=None, verbose=False):
     """
     Connect to the SEDAP-Express server and handle communication.
 
@@ -135,6 +183,7 @@ def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, co
         mode: "receive" for continuous monitoring, "command" for sending a COMMAND
         command_lat: Latitude for COMMAND message (required if mode="command")
         command_lon: Longitude for COMMAND message (required if mode="command")
+        verbose: Enable verbose output (show raw messages)
     """
     print(f"[TCP] Connecting to {host}:{port}...")
 
@@ -167,7 +216,7 @@ def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, co
             # Start receive thread
             recv_thread = threading.Thread(
                 target=receive_messages,
-                args=(sock,),
+                args=(sock, verbose),
                 daemon=True
             )
             recv_thread.start()
@@ -241,12 +290,17 @@ Examples:
         default=5555,
         help="Server port (default: 5555)"
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output (show raw messages)"
+    )
 
     args = parser.parse_args()
 
     # Determine mode and parameters
     if args.receive:
-        run_client(host=args.host, port=args.port, mode="receive")
+        run_client(host=args.host, port=args.port, mode="receive", verbose=args.verbose)
     elif args.command:
         lat, lon = args.command
         run_client(
@@ -254,5 +308,6 @@ Examples:
             port=args.port,
             mode="command",
             command_lat=lat,
-            command_lon=lon
+            command_lon=lon,
+            verbose=args.verbose
         )

@@ -1,6 +1,7 @@
 import socket
 import threading
 import time
+import argparse
 import blueye.protocol as bp
 from blueye.sdk import Drone
 import numpy as np
@@ -87,6 +88,44 @@ def build_ownunit(unit_id: str,
     )
 
 
+def build_generic_rtsp(number: str,
+                       timestamp: str,
+                       sender: str,
+                       rtsp_url: str,
+                       azimuth: float = 0.0,
+                       elevation: float = 0.0,
+                       h_fov: float = 65.0,
+                       v_fov: float = 45.0,
+                       range_m: float = 10.0,
+                       zoom: float = 1.0) -> str:
+    """
+    Build GENERIC message for RTSP stream according to SEDAP-Express specification.
+
+    Structure:
+    GENERIC;<Number>;<Time>;<Sender>;<Classification>;<Acknowledgement>;<MAC>;<ContentType>;<Encoding>;<Content>;<Rtsp stream>;
+    <Azimuth_deg>;<Elevation_deg>;<HorizontalOpeningAngle_deg>;<VerticalOpeningAngle_deg>;<Range_m>;<Zoom>
+    """
+    return (
+        f"GENERIC;"
+        f"{number};"
+        f"{timestamp};"
+        f"{sender};"
+        f"U;"
+        f"false;"
+        f"mac;"
+        f"ASCII;"
+        f"NONE;"
+        f"RTSP;"
+        f"{rtsp_url};"
+        f"{azimuth:.1f};"
+        f"{elevation:.1f};"
+        f"{h_fov:.1f};"
+        f"{v_fov:.1f};"
+        f"{range_m};"
+        f"{zoom:.1f}\n"
+    )
+
+
 # =========================
 # COMMAND handling
 # =========================
@@ -146,6 +185,13 @@ def callback_depth(msg_type: str, msg: bp.DepthTel):
 
 
 # =========================
+# Global config for RTSP
+# =========================
+
+rtsp_url = None
+
+
+# =========================
 # Client handler
 # =========================
 
@@ -157,6 +203,8 @@ def client_handler(conn: socket.socket, addr):
 
     last_hb = 0
     last_ownunit = 0
+    last_generic = 0
+    generic_counter = 0
 
     conn.settimeout(0.1)
 
@@ -186,6 +234,24 @@ def client_handler(conn: socket.socket, addr):
                     ).encode()
                 )
                 last_ownunit = now
+
+            # ---- GENERIC (RTSP) @ 1 Hz ----
+            if rtsp_url and now - last_generic >= 1.0:
+                generic_counter += 1
+                timestamp = hex(int(now * 1000))[2:].upper()  # Convert to hex timestamp
+                number = hex(generic_counter)[2:].upper()  # Convert counter to hex
+
+                conn.sendall(
+                    build_generic_rtsp(
+                        number=number,
+                        timestamp=timestamp,
+                        sender=sender_id,
+                        rtsp_url=rtsp_url,
+                        azimuth=heading,  # Use drone heading as camera azimuth
+                        elevation=0.0
+                    ).encode()
+                )
+                last_generic = now
 
             # ---- Receive COMMANDs ----
             try:
@@ -229,6 +295,21 @@ def start_server(host="0.0.0.0", port=5555):
 # =========================
 
 if __name__ == "__main__":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="SEDAP-Express TCP server for Blueye drone")
+    parser.add_argument(
+        "-g",
+        "--generic-rtsp",
+        type=str,
+        help="Enable GENERIC message with RTSP stream URL (sent at 1 Hz)"
+    )
+    args = parser.parse_args()
+
+    # Set global RTSP URL if provided
+    if args.generic_rtsp:
+        rtsp_url = args.generic_rtsp
+        print(f"[CONFIG] GENERIC/RTSP enabled with URL: {rtsp_url}")
+
     # Connect to the Blueye drone
     print("[DRONE] Connecting to Blueye drone...")
     my_drone = Drone(connect_as_observer=True)
