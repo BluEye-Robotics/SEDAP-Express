@@ -41,7 +41,7 @@ The Server will then print the command as follows:
 The server will produce the following messages:
 ```
 OWNUNIT;blueye-rov;63.438731;10.426696;-0.4;0.1;0.0;0.0;;;BLUEYE_ROV; # at 5 Hz
-HEARTBEAT from blueye-server; # at 1 Hz
+HEARTBEAT;blueye-server; # at 1 Hz
 GENERIC;43;19BDFE151A0;blueye-server;U;false;mac;ASCII;NONE;RTSP;rtsp://192.168.1.101:8554/test;0.0;0.0;65.0;45.0;10.0;1.0 # at 1 Hz
 ```
 
