@@ -14,7 +14,7 @@ import numpy as np
 class PositionState:
     """Thread-safe storage for latest position estimate."""
     def __init__(self):
-        self.lat = 63.439396904796006,  # Default fallback position
+        self.lat = 63.439396904796006  # Default fallback position
         self.lon = 10.42752058910458
         self.heading = 0.0
         self.course_over_ground = 0.0
