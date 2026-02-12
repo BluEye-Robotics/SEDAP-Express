@@ -274,20 +274,32 @@ def client_handler(conn: socket.socket, addr):
 # TCP server
 # =========================
 
+shutdown_flag = threading.Event()
+
 def start_server(host="0.0.0.0", port=5555):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((host, port))
     server.listen(1)
+    server.settimeout(1.0)  # Add timeout to make accept() interruptible
 
     print(f"[TCP] SEDAP-Express server listening on {host}:{port}")
 
-    while True:
-        conn, addr = server.accept()
-        threading.Thread(
-            target=client_handler,
-            args=(conn, addr),
-            daemon=True
-        ).start()
+    while not shutdown_flag.is_set():
+        try:
+            conn, addr = server.accept()
+            threading.Thread(
+                target=client_handler,
+                args=(conn, addr),
+                daemon=True
+            ).start()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+
+    server.close()
+    print("[TCP] Server socket closed")
 
 
 # =========================
@@ -342,5 +354,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n[MAIN] Shutting down...")
     finally:
+        shutdown_flag.set()
         my_drone.disconnect()
         print("[DRONE] Disconnected")
+        server_thread.join(timeout=2.0)
+        print("[MAIN] Shutdown complete")
