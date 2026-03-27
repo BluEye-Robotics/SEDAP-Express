@@ -48,11 +48,35 @@ position_state = PositionState()
 # Message builders
 # =========================
 
-def build_heartbeat(sender_id: str) -> str:
-    return f"HEARTBEAT;{sender_id}\n"
+def build_header(number: int,
+                 time_ms: int,
+                 sender: str,
+                 classification: str = "U",
+                 acknowledgement: str = "FALSE",
+                 mac: str = "") -> str:
+    """Build the standard SEDAP-Express v1.4 message header."""
+    number_hex = format(number & 0xFF, '02X')
+    time_hex = format(time_ms, '012X')
+    return (
+        f"{number_hex};"
+        f"{time_hex};"
+        f"{sender};"
+        f"{classification};"
+        f"{acknowledgement};"
+        f"{mac}"
+    )
 
 
-def build_ownunit(unit_id: str,
+def build_heartbeat(number: int,
+                    time_ms: int,
+                    sender: str) -> str:
+    """Build HEARTBEAT message according to SEDAP-Express v1.4 specification."""
+    return f"HEARTBEAT;{build_header(number, time_ms, sender)}\n"
+
+
+def build_ownunit(number: int,
+                  time_ms: int,
+                  sender: str,
                   lat: float,
                   lon: float,
                   alt: float = 0.0,
@@ -64,8 +88,9 @@ def build_ownunit(unit_id: str,
                   name: str = "BLUEYE_ROV",
                   sidc: str = None) -> str:
     """
-    Build OWNUNIT message according to SEDAP-Express specification.
-    Field order: latitude, longitude, altitude, speed, course, heading, roll, pitch, name, sidc
+    Build OWNUNIT message according to SEDAP-Express v1.4 specification.
+    Header: number, time, sender, classification, acknowledgement, mac
+    Body: latitude, longitude, altitude, speed, course, heading, roll, pitch, name, sidc
     """
     roll_str = f"{roll:.1f}" if roll is not None else ""
     pitch_str = f"{pitch:.1f}" if pitch is not None else ""
@@ -74,7 +99,7 @@ def build_ownunit(unit_id: str,
 
     return (
         f"OWNUNIT;"
-        f"{unit_id};"
+        f"{build_header(number, time_ms, sender)};"
         f"{lat:.6f};"
         f"{lon:.6f};"
         f"{alt:.1f};"
@@ -180,6 +205,8 @@ def start_udp_sender(address: str, port: int, broadcast: bool = False):
     last_hb = 0
     last_ownunit = 0
     last_generic = 0
+    hb_counter = 0
+    ownunit_counter = 0
     generic_counter = 0
 
     try:
@@ -188,16 +215,20 @@ def start_udp_sender(address: str, port: int, broadcast: bool = False):
 
             # ---- HEARTBEAT @ 1 Hz ----
             if now - last_hb >= 1.0:
-                sock.sendto(build_heartbeat(sender_id).encode(), dest)
+                hb_counter += 1
+                sock.sendto(build_heartbeat(hb_counter, int(now * 1000), sender_id).encode(), dest)
                 last_hb = now
 
             # ---- OWNUNIT @ 5 Hz ----
             if now - last_ownunit >= 0.2:
                 lat, lon, heading, course_over_ground, speed, is_valid, depth = position_state.get()
+                ownunit_counter += 1
 
                 sock.sendto(
                     build_ownunit(
-                        unit_id=unit_id,
+                        number=ownunit_counter,
+                        time_ms=int(now * 1000),
+                        sender=sender_id,
                         lat=lat,
                         lon=lon,
                         alt=depth,

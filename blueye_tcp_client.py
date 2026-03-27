@@ -8,15 +8,41 @@ import time
 # Message builders
 # =========================
 
-def build_heartbeat(sender_id: str) -> str:
-    return f"HEARTBEAT;{sender_id}\n"
+def build_header(number: int,
+                 time_ms: int,
+                 sender: str,
+                 classification: str = "U",
+                 acknowledgement: str = "FALSE",
+                 mac: str = "") -> str:
+    """Build the standard SEDAP-Express v1.4 message header."""
+    number_hex = format(number & 0xFF, '02X')
+    time_hex = format(time_ms, '012X')
+    return (
+        f"{number_hex};"
+        f"{time_hex};"
+        f"{sender};"
+        f"{classification};"
+        f"{acknowledgement};"
+        f"{mac}"
+    )
 
 
-def build_command_move(lat: float, lon: float) -> str:
+def build_heartbeat(number: int,
+                    time_ms: int,
+                    sender: str) -> str:
+    """Build HEARTBEAT message according to SEDAP-Express v1.4 specification."""
+    return f"HEARTBEAT;{build_header(number, time_ms, sender)}\n"
+
+
+def build_command_move(number: int,
+                       time_ms: int,
+                       sender: str,
+                       lat: float,
+                       lon: float) -> str:
     """
     Build a COMMAND message with case 5 (MOVE) for lat/lon POI.
     """
-    return f"COMMAND;move_cmd;5;{lat:.6f};{lon:.6f}\n"
+    return f"COMMAND;{build_header(number, time_ms, sender)};5;{lat:.6f};{lon:.6f}\n"
 
 
 # =========================
@@ -26,31 +52,31 @@ def build_command_move(lat: float, lon: float) -> str:
 def handle_ownunit(message: str, verbose: bool = False):
     """
     Parse and print OWNUNIT messages.
-    Format: OWNUNIT;unit_id;lat;lon;alt;speed;course;heading;roll;pitch;name;sidc
+    Format: OWNUNIT;<Number>;<Time>;<Sender>;<Classification>;<Acknowledgement>;<MAC>;<Lat>;<Lon>;<Alt>;<Speed>;<Course>;<Heading>;<Roll>;<Pitch>;<Name>;<SIDC>
     """
     parts = message.strip().split(";")
 
-    if len(parts) < 8:
+    if len(parts) < 13:
         return
 
     if parts[0] != "OWNUNIT":
         return
 
     try:
-        unit_id = parts[1]
-        lat = float(parts[2])
-        lon = float(parts[3])
-        alt = float(parts[4]) if parts[4] else 0.0
-        speed = float(parts[5]) if parts[5] else 0.0
-        course = float(parts[6]) if parts[6] else 0.0
-        heading = float(parts[7]) if parts[7] else 0.0
-        roll = float(parts[8]) if len(parts) > 8 and parts[8] else None
-        pitch = float(parts[9]) if len(parts) > 9 and parts[9] else None
-        name = parts[10] if len(parts) > 10 and parts[10] else ""
-        sidc = parts[11] if len(parts) > 11 and parts[11] else ""
+        sender = parts[3]
+        lat = float(parts[7])
+        lon = float(parts[8])
+        alt = float(parts[9]) if parts[9] else 0.0
+        speed = float(parts[10]) if parts[10] else 0.0
+        course = float(parts[11]) if parts[11] else 0.0
+        heading = float(parts[12]) if parts[12] else 0.0
+        roll = float(parts[13]) if len(parts) > 13 and parts[13] else None
+        pitch = float(parts[14]) if len(parts) > 14 and parts[14] else None
+        name = parts[15] if len(parts) > 15 and parts[15] else ""
+        sidc = parts[16] if len(parts) > 16 and parts[16] else ""
 
         print(
-            f"[OWNUNIT] {unit_id}: "
+            f"[OWNUNIT] {sender}: "
             f"lat={lat:.6f}, lon={lon:.6f}, "
             f"alt={alt:.1f}m, spd={speed:.1f} m/s, "
             f"course={course:.1f}°, hdg={heading:.1f}°"
@@ -59,7 +85,6 @@ def handle_ownunit(message: str, verbose: bool = False):
             print(f"  roll={roll:.1f if roll is not None else 'N/A'}°, pitch={pitch:.1f if pitch is not None else 'N/A'}°")
         if name:
             print(f"  name={name}")
-        # print the raw message for reference only if verbose
         if verbose:
             print(f"  Raw message: {message.strip()}")
 
@@ -69,13 +94,13 @@ def handle_ownunit(message: str, verbose: bool = False):
 
 def handle_heartbeat(message: str):
     """
-    Parse HEARTBEAT messages (optional, for debugging).
-    Format: HEARTBEAT;sender_id
+    Parse HEARTBEAT messages.
+    Format: HEARTBEAT;<Number>;<Time>;<Sender>;<Classification>;<Acknowledgement>;<MAC>
     """
     parts = message.strip().split(";")
-    if len(parts) >= 2 and parts[0] == "HEARTBEAT":
-        sender_id = parts[1]
-        print(f"[HEARTBEAT] from {sender_id}")
+    if len(parts) >= 4 and parts[0] == "HEARTBEAT":
+        sender = parts[3]
+        print(f"[HEARTBEAT] from {sender}")
 
 
 def handle_generic(message: str, verbose: bool = False):
@@ -196,6 +221,8 @@ def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, co
         # Send periodic heartbeats
         sender_id = "python-client"
         last_hb = 0
+        hb_counter = 0
+        cmd_counter = 0
 
         if mode == "command":
             # Command mode: send COMMAND and exit
@@ -204,11 +231,13 @@ def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, co
                 return
 
             print(f"\n--- Sending COMMAND (MOVE) to lat={command_lat}, lon={command_lon} ---\n")
-            command_msg = build_command_move(command_lat, command_lon)
+            cmd_counter += 1
+            command_msg = build_command_move(cmd_counter, int(time.time() * 1000), sender_id, command_lat, command_lon)
             sock.sendall(command_msg.encode())
 
             # Send a heartbeat and wait a moment for any response
-            sock.sendall(build_heartbeat(sender_id).encode())
+            hb_counter += 1
+            sock.sendall(build_heartbeat(hb_counter, int(time.time() * 1000), sender_id).encode())
             time.sleep(1)
             print("[TCP] Command sent successfully")
 
@@ -228,7 +257,8 @@ def run_client(host="127.0.0.1", port=5555, mode="receive", command_lat=None, co
                 now = time.time()
 
                 if now - last_hb >= 1.0:
-                    sock.sendall(build_heartbeat(sender_id).encode())
+                    hb_counter += 1
+                    sock.sendall(build_heartbeat(hb_counter, int(now * 1000), sender_id).encode())
                     last_hb = now
 
                 time.sleep(0.1)
